@@ -1,0 +1,930 @@
+================================================================================
+ALGORITHM LOGIC EXPLANATION
+Project: Algorithm Visualizer
+Files covered:
+    - logic/binary.py
+    - logic/selection.py
+    - logic/hanoi.py
+================================================================================
+
+
+--------------------------------------------------------------------------------
+SECTION 1 — BINARY SEARCH  (logic/binary.py)
+--------------------------------------------------------------------------------
+
+1.1 WHAT IS BINARY SEARCH?
+--------------------------
+Binary search is an algorithm that finds a target value inside a SORTED list by
+repeatedly cutting the search range in half. Instead of checking every element
+one by one (linear search), it looks at the middle element, decides whether the
+target is to the left or to the right, and throws away the half that cannot
+contain the target. Each step halves the remaining work, so the number of
+comparisons grows only logarithmically with the size of the list.
+
+For a list of 1,000,000 sorted items, binary search needs at most about 20
+comparisons. Linear search would need up to 1,000,000.
+
+The algorithm ONLY works if the list is sorted. If the list is unsorted, the
+"go left / go right" decision is meaningless and the result is wrong. This is
+the single most important precondition of binary search.
+
+
+1.2 THE TWO POINTERS: LEFT AND RIGHT
+------------------------------------
+The algorithm maintains two indices:
+
+    left  — the lowest index that could still contain the target.
+    right — the highest index that could still contain the target.
+
+At the start of a search, no part of the list has been eliminated, so:
+
+    left  = 0
+    right = len(arr) - 1
+
+Everything between left and right (inclusive) is the "active window" — the
+only part of the list that could still contain the target. Everything outside
+this window has already been proven impossible and is ignored.
+
+The loop continues as long as left <= right. If left ever becomes greater than
+right, the window is empty, which means the target is not in the list.
+
+
+1.3 COMPUTING THE MIDPOINT
+--------------------------
+At each iteration the algorithm examines the middle of the active window:
+
+    mid = (left + right) // 2
+
+The double-slash // is integer division, so for example (0 + 9) // 2 = 4, and
+(5 + 10) // 2 = 7. The floor is used so that mid is always a valid index.
+
+Why not (left + right) / 2? Because that returns a float, and array indices must
+be integers. Also, in languages with fixed-size integers, (left + right) can
+overflow if the array is very large. The safe form is left + (right - left) // 2,
+which produces the same result without overflow. Python does not overflow, so
+the simpler (left + right) // 2 is fine here, but it is worth knowing the
+defensive version.
+
+
+1.4 THE THREE CASES AT EACH STEP
+--------------------------------
+The algorithm compares arr[mid] with the target. There are exactly three
+possible outcomes:
+
+CASE 1: arr[mid] == target
+    The target has been found at index mid. The search is over — return mid.
+
+CASE 2: arr[mid] < target
+    The middle element is smaller than the target. Because the list is sorted,
+    every element at or to the LEFT of mid is also <= arr[mid] < target, so
+    none of them can be the target. We can safely discard the left half,
+    including mid itself, by setting:
+
+        left = mid + 1
+
+CASE 3: arr[mid] > target
+    The middle element is larger than the target. Symmetrically, every element
+    at or to the RIGHT of mid is >= arr[mid] > target, so none of them can be
+    the target. We discard the right half, including mid itself, by setting:
+
+        right = mid - 1
+
+After updating either pointer, the loop repeats with a strictly smaller window.
+Because the window shrinks by roughly half each time, the loop terminates.
+
+
+1.5 WHY THE LOOP TERMINATES
+---------------------------
+Each iteration either returns early (case 1) or shrinks the window. The size of
+the window is (right - left + 1). When arr[mid] < target, left moves up past
+mid, so the new window size is (right - (mid + 1) + 1) = right - mid. Because
+mid >= left, this is strictly smaller than the old window. When arr[mid] > target,
+right moves down past mid, similarly shrinking the window. Since the window is
+a non-negative integer that strictly decreases every iteration, the loop must
+eventually end. When it ends without finding the target, the window is empty.
+
+
+1.6 WORKED EXAMPLE
+------------------
+List:    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+Target:  7
+
+Start:   left = 0, right = 9
+  mid = (0 + 9) // 2 = 4
+  arr[4] = 5   →  5 < 7  →  left = 5
+
+Second:  left = 5, right = 9
+  mid = (5 + 9) // 2 = 7
+  arr[7] = 8   →  8 > 7  →  right = 6
+
+Third:   left = 5, right = 6
+  mid = (5 + 6) // 2 = 5
+  arr[5] = 6   →  6 < 7  →  left = 6
+
+Fourth:  left = 6, right = 6
+  mid = (6 + 6) // 2 = 6
+  arr[6] = 7   →  7 == 7 →  FOUND at index 6.
+
+Total comparisons: 4. A linear search would have taken 7.
+
+
+1.7 WHAT HAPPENS WHEN THE TARGET IS MISSING
+-------------------------------------------
+If the target is not in the list, the loop keeps halving until left > right.
+At that point the active window is empty, which proves no element could be the
+target. The algorithm returns "not found" (in our version it calls the callback
+with state "Not_found").
+
+
+1.8 COMPLEXITY
+--------------
+Time complexity:    O(log n)
+    Each step halves the search window. The number of steps is at most
+    ceil(log2(n + 1)).
+
+Space complexity:   O(1)
+    Only two integer pointers and one midpoint are stored, regardless of n.
+    No recursion, no extra list.
+
+
+1.9 THE CODE, LINE BY LINE
+--------------------------
+    import time
+
+        Imported so we can pause between steps and let the user watch.
+
+    class BinarySearchLogic:
+
+        The class is a thin container for the algorithm plus a configurable
+        delay. The UI constructs one instance and calls run_search on it.
+
+    def __init__(self, delay=1):
+
+        delay is the number of seconds to sleep between visualisation steps.
+        The default of 1 second is slow enough to follow on screen.
+
+    def run_search(self, arr, target, callback):
+
+        arr     — the sorted list to search (a reference, not modified)
+        target  — the value to find
+        callback — a function the algorithm calls to notify the UI about
+                   progress. It receives (index, state) where state is one of
+                   "reset", "highlight", "found", "left_red", "right_red",
+                   "Not_found". The UI reads this and updates colours.
+
+        Splitting the algorithm from the visualisation like this means the
+        same algorithm can drive a GUI, a terminal animation, or a unit test
+        without changes.
+
+    left, right = 0, len(arr) - 1
+
+        Initialise the two pointers. The whole array is the active window.
+
+    mid = 0
+
+        Pre-initialise mid. If the array is empty (len(arr) == 0), the loop
+        body never runs, but the trailing "Not_found" callback still references
+        mid. Initialising it avoids a NameError in that edge case.
+
+    while left <= right:
+
+        Loop condition: there is still at least one candidate index left.
+
+        mid = (left + right) // 2
+
+            Compute the middle index of the current window.
+
+        callback(mid, "reset")
+        time.sleep(self.delay)
+
+            Tell the UI "we are starting a fresh look at this midpoint" and
+            pause so the user can see it. The reset state clears any temporary
+            highlight colours left over from the previous iteration.
+
+        callback(mid, "highlight")
+        time.sleep(self.delay)
+
+            Tell the UI "this is the midpoint we are examining right now" and
+            pause. In the UI this paints the cell yellow.
+
+        if arr[mid] == target:
+            callback(mid, "found")
+            return
+
+            Case 1: found. Notify the UI (paints green), then leave the
+            function. No further steps are needed.
+
+        elif arr[mid] < target:
+            callback(mid, "left_red")
+            time.sleep(self.delay)
+            left = mid + 1
+
+            Case 2: target is to the right. The UI paints the whole left
+            portion (including mid) red to show it has been eliminated, then
+            the pointer moves up.
+
+        else:
+            callback(mid, "right_red")
+            time.sleep(self.delay)
+            right = mid - 1
+
+            Case 3: target is to the left. The UI paints the whole right
+            portion red, then the pointer moves down.
+
+    callback(mid, "Not_found")
+
+        The loop exited without finding the target. Notify the UI so it can
+        display "value not found".
+
+
+1.10 NOTES ON THE CALLBACK CONTRACT
+-----------------------------------
+States emitted, in order of a typical successful search:
+    reset       — start examining mid (clear previous temporary highlights)
+    highlight   — mid is the current midpoint (paint yellow)
+    found       — target was here (paint green, stop)
+    left_red    — the whole left half is eliminated (paint red, then left++)
+    right_red   — the whole right half is eliminated (paint red, then right--)
+    Not_found   — the target is not in the list
+
+The UI never inspects the algorithm's internal pointers. It only reacts to
+these six states. This makes the two modules fully decoupled: you could rewrite
+the UI entirely (e.g. as a pygame window or a matplotlib plot) without touching
+binary.py.
+
+
+1.11 COMMON BUGS TO AVOID
+-------------------------
+Bug: Using right = mid instead of right = mid - 1.
+    If arr[mid] > target, mid itself is known to be too big. Setting right = mid
+    means the window still includes mid, so the next iteration recomputes the
+    same mid and loops forever (infinite loop).
+
+Bug: Using left = mid instead of left = mid + 1.
+    Same problem, mirrored. The window never shrinks and the loop hangs.
+
+Bug: Using while left < right instead of while left <= right.
+    When the target is the last remaining candidate, left == right, but the
+    loop exits before checking it. The function reports "not found" for a value
+    that is present.
+
+Bug: Applying binary search to an unsorted list.
+    No infinite loop, but wrong answers. Always sort or verify the precondition.
+
+Bug: Mutable default argument (if you ever see delay=[] or delay={}).
+    Not an issue here because delay is a number, but worth remembering for
+    other functions.
+
+
+
+--------------------------------------------------------------------------------
+SECTION 2 — SELECTION SORT  (logic/selection.py)
+--------------------------------------------------------------------------------
+
+2.1 WHAT IS SELECTION SORT?
+---------------------------
+Selection sort builds a sorted list by repeatedly finding the smallest element
+in the unsorted portion and swapping it to the front of that portion. It is one
+of the simplest sorting algorithms to reason about: on each pass, one more
+element is placed at its final position, and the sorted region grows from left
+to right.
+
+It is not the fastest sort — O(n^2) — but it has one special property: it makes
+exactly n - 1 swaps in the worst case, which is the minimum possible number of
+swaps for a comparison-based sort. That property matters when swaps are
+expensive (e.g. moving large records in memory) and comparisons are cheap.
+
+
+2.2 THE TWO REGIONS OF THE ARRAY
+--------------------------------
+At any point during the sort, the array is conceptually split into two parts:
+
+    [ sorted region | unsorted region ]
+
+The sorted region occupies indices 0 .. i - 1 and contains the i smallest
+elements of the array, in ascending order. The unsorted region occupies
+indices i .. n - 1 and is not yet sorted. The boundary index i moves forward
+by exactly one on each outer iteration.
+
+After n - 1 passes, the sorted region is indices 0 .. n - 2 and the unsorted
+region contains only index n - 1. Since every other element is already in its
+final place, the remaining one must also be in its final place. That is why the
+outer loop stops at n - 1 instead of n.
+
+
+2.3 THE OUTER LOOP
+------------------
+    for i in range(n - 1):
+
+        i is the index where the next-smallest element will be placed.
+        The last element (index n - 1) does not need its own pass because it is
+        forced into place once everything before it is correct.
+
+    min_idx = i
+
+        Assume for the moment that the element at position i is the smallest
+        remaining. This will be corrected during the inner scan if a smaller
+        element is found.
+
+2.4 THE INNER LOOP — FINDING THE MINIMUM
+----------------------------------------
+    for j in range(i + 1, n):
+
+        Scan every element after the current position. The element at i itself
+        is already a candidate, so the scan starts at i + 1.
+
+        if data[j] < data[min_idx]:
+
+            If the element at j is smaller than the smallest one found so far,
+            update the candidate.
+
+            min_idx = j
+
+        The result of the inner loop is the index of the smallest element in
+        the range i .. n - 1.
+
+Why strict less-than (<) and not <=?
+    Using < leaves min_idx at its initial i when there are ties, which means
+    selection sort does NOT swap equal elements past each other. Selection
+    sort is actually one of the very few sorting algorithms that is not
+    stable-by-default, but using < for the comparison does keep the number
+    of swaps minimal. Using <= would also work but would cause extra swaps
+    on equal elements.
+
+2.5 THE SWAP
+------------
+    if min_idx != i:
+        data[i], data[min_idx] = data[min_idx], data[i]
+
+        If the smallest element was somewhere other than position i, swap it
+        into place. Python's tuple-swap syntax performs the assignment without
+        a temporary variable and is guaranteed safe even when i == min_idx
+        (which is why we still guard with `if min_idx != i` — it just avoids a
+        pointless no-op swap and saves a callback).
+
+    After the swap, data[i] is the (i + 1)-th smallest element of the original
+    array and will never move again. The sorted region has grown by one.
+
+2.6 WHY SELECTION SORT IS CORRECT
+---------------------------------
+Proof by induction on the number of completed passes i:
+
+Base case (i = 0): Before any passes, the sorted region is empty and the claim
+    "the sorted region contains the i smallest elements in order" is vacuously
+    true.
+
+Inductive step: Suppose after k passes, the first k elements of the array are
+    the k smallest elements in ascending order. On pass k, the algorithm scans
+    the range k .. n - 1 and finds the smallest of the remaining elements. That
+    element is the (k + 1)-th smallest overall, and it is swapped into position
+    k. The first k elements are untouched. Therefore after pass k+1, the first
+    k+1 elements are the k+1 smallest in order. The invariant is preserved.
+
+Conclusion: After n - 1 passes, the first n - 1 elements are the n - 1 smallest
+    in ascending order. The final element, being the largest, is also in place.
+    The array is sorted.
+
+2.7 WORKED EXAMPLE
+------------------
+Input: [7, 3, 9, 1, 5, 2, 8, 4, 6, 10]
+
+Pass i = 0:
+    Scan indices 1..9 for the minimum. Smallest is 1 at index 3.
+    Swap data[0] and data[3]:
+    [1, 3, 9, 7, 5, 2, 8, 4, 6, 10]
+
+Pass i = 1:
+    Scan indices 2..9 for the minimum. Smallest is 2 at index 5.
+    Swap data[1] and data[5]:
+    [1, 2, 9, 7, 5, 3, 8, 4, 6, 10]
+
+Pass i = 2:
+    Scan indices 3..9. Smallest is 3 at index 5.
+    Swap data[2] and data[5]:
+    [1, 2, 3, 7, 5, 9, 8, 4, 6, 10]
+
+Pass i = 3:
+    Scan indices 4..9. Smallest is 4 at index 7.
+    Swap data[3] and data[7]:
+    [1, 2, 3, 4, 5, 9, 8, 7, 6, 10]
+
+Pass i = 4:
+    Scan indices 5..9. Smallest is 5 at index 4 (already at i). No swap.
+    [1, 2, 3, 4, 5, 9, 8, 7, 6, 10]
+
+Pass i = 5:
+    Smallest in 6..9 is 6 at index 8. Swap:
+    [1, 2, 3, 4, 5, 6, 8, 7, 9, 10]
+
+Pass i = 6:
+    Smallest in 7..9 is 7 at index 7. No swap.
+    [1, 2, 3, 4, 5, 6, 8, 7, 9, 10]
+
+Pass i = 7:
+    Smallest in 8..9 is 8 at index 7. No swap.
+    [1, 2, 3, 4, 5, 6, 8, 7, 9, 10]  (index 7 already has 7)
+
+Pass i = 8:
+    Smallest in 9..9 is 9 at index 8. No swap.
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+Done. The array is sorted.
+
+2.8 COMPLEXITY
+--------------
+Time complexity:    O(n^2)
+    Outer loop runs n - 1 times. Inner loop runs (n - 1) + (n - 2) + ... + 1
+    times, which is n(n - 1) / 2 iterations total. That is O(n^2) regardless
+    of the initial order — selection sort does not benefit from nearly-sorted
+    input.
+
+Space complexity:   O(1)
+    Only two indices and one temporary (via Python's tuple swap) are used. The
+    algorithm sorts in place.
+
+Number of swaps:    at most n - 1
+    This is the minimum possible for any comparison-based sort that sorts by
+    swapping. If swap cost dominates comparison cost, selection sort can be
+    preferable to insertion sort or bubble sort.
+
+Stability:          unstable
+    Because it swaps distant elements, equal elements can end up in a different
+    relative order. Example: [2a, 2b, 1] becomes [1, 2b, 2a] — 2a and 2b
+    swapped relative order. If stability is required, use insertion sort or
+    merge sort instead.
+
+2.9 THE CODE, LINE BY LINE
+--------------------------
+    import time
+
+        Same as binary search: pauses between steps.
+
+    class SelectionSortLogic:
+
+    def __init__(self, delay=0.5):
+
+        delay between visualisation steps. The UI uses 0.4s by default.
+
+    def run_sort(self, arr, callback):
+
+        arr      — the array to sort. It is NOT mutated directly; we copy it.
+        callback — notified at each meaningful moment with (i, j, data, state).
+                   i is the outer index being filled, j is the inner index being
+                   compared, data is the CURRENT snapshot of the array, and
+                   state is one of "start", "compare", "new_min", "swap",
+                   "done". The UI reads these to update colours.
+
+    data = list(arr)
+
+        Make a copy. Two reasons:
+          1. The visualizer can be re-run on the same original input.
+          2. Any caller that holds a reference to the original list is not
+             surprised by in-place mutations.
+        If you don't need either guarantee, you could sort in place, but
+        copying is safer and inexpensive for the sizes here.
+
+    n = len(data)
+
+        Convenience variable for the outer loop bound.
+
+    for i in range(n - 1):
+
+        The outer loop covers every index except the last. See section 2.2 for
+        why the last index does not need a pass.
+
+        min_idx = i
+
+            Initial candidate for the minimum.
+
+        callback(i, min_idx, data, "start")
+        time.sleep(self.delay)
+
+            Tell the UI "a new pass has begun; we are about to find the minimum
+            starting at index i". UI can paint index i as the current position.
+
+        for j in range(i + 1, n):
+
+            Scan all remaining elements.
+
+            callback(i, j, data, "compare")
+            time.sleep(self.delay)
+
+                Tell the UI "we are comparing index j with the current
+                candidate". UI paints j as a temporary highlight.
+
+            if data[j] < data[min_idx]:
+                min_idx = j
+                callback(i, min_idx, data, "new_min")
+                time.sleep(self.delay)
+
+                If a smaller element was found, update the candidate and let
+                the UI paint it in a different colour.
+
+        if min_idx != i:
+            data[i], data[min_idx] = data[min_idx], data[i]
+            callback(i, min_idx, data, "swap")
+            time.sleep(self.delay)
+
+            If the minimum was not already at position i, swap it in. The UI
+            paints both i and min_idx as "settled" green. Skip the swap (and
+            the callback) when no movement is needed — this avoids visual
+            confusion and saves a state change.
+
+    callback(n - 1, n - 1, data, "done")
+
+        After the outer loop finishes, only the last element remains. It is
+        already in its final position (by the invariant from section 2.6), so
+        we just notify the UI that everything is sorted.
+
+2.10 NOTES ON THE CALLBACK CONTRACT
+-----------------------------------
+    start    — a new outer pass begins at index i
+    compare  — index j is being compared with the current candidate min_idx
+    new_min  — index j is the new candidate minimum
+    swap     — indices i and min_idx are being swapped
+    done     — sorting is complete
+
+Note that "data" is passed as a fresh snapshot (a copy of data at the moment
+of the callback) because the UI re-renders every cell's number each callback.
+Passing a reference would also work in Python because data is not mutated
+between callbacks, but passing a copy is clearer about intent.
+
+2.11 COMMON BUGS TO AVOID
+-------------------------
+Bug: Inner loop starting at i instead of i + 1.
+    Wastes one comparison per pass and does not break correctness, but it's
+    unnecessary. The element at i is already the initial candidate.
+
+Bug: Outer loop going to n instead of n - 1.
+    Harmless (the last pass is a no-op since the only element "remaining" is
+    the one already in place), but it emits a pointless start/done pair and
+    confuses the visualizer.
+
+Bug: Forgetting to update min_idx inside the inner loop.
+    The algorithm then just compares every element against the one at index i
+    and never finds the true minimum. The array does not get sorted.
+
+Bug: Using <= instead of < when updating min_idx.
+    Correctness is preserved but swaps become more frequent because equal
+    elements can swap places. It also increases the number of callbacks the
+    UI must process. Prefer strict <.
+
+Bug: Swapping without the min_idx != i guard.
+    Each pass calls the callback even when nothing moved, so the UI flashes
+    for no reason, and the total swap count goes up unnecessarily.
+
+
+
+--------------------------------------------------------------------------------
+SECTION 3 — TOWER OF HANOI  (logic/hanoi.py)
+--------------------------------------------------------------------------------
+
+3.1 WHAT IS THE TOWER OF HANOI?
+-------------------------------
+The Tower of Hanoi is a classic recursive puzzle. You are given:
+
+    - A set of disks of distinct sizes (numbered 1..n, where 1 is the smallest)
+    - A set of pegs (in our case four: A, B, C, D)
+
+At the start, all disks are stacked on peg A in decreasing size from bottom to
+top (largest at the bottom, smallest on top).
+
+The goal: move the entire stack to another peg. The rules:
+
+    Rule 1: Only one disk may be moved at a time.
+    Rule 2: Only the top disk of a peg may be moved.
+    Rule 3: A disk may never be placed on top of a smaller disk.
+    Rule 4 (ours): The puzzle is solved when all disks sit on any peg OTHER
+                   THAN THE STARTING PEG A. This includes B, C, or D.
+
+The classic puzzle uses three pegs. Ours uses four, which makes it strictly
+easier for large n (the optimal solution length is much shorter), but the
+underlying recursive structure is identical.
+
+
+3.2 THE THREE-PEG VERSION (BACKGROUND)
+--------------------------------------
+For three pegs, the recursive solution is:
+
+    To move n disks from source to destination using aux:
+        1. Move n - 1 disks from source to aux (recursively).
+        2. Move the largest disk from source to destination (one move).
+        3. Move n - 1 disks from aux to destination (recursively).
+
+Why does this work? Because of the following invariant:
+
+    At the moment we want to move the largest disk from source to
+    destination, the destination peg must be empty. If it were not, the
+    largest disk would have to sit on top of whatever is there, which would
+    violate rule 3. So we first have to remove everything from the
+    destination peg. That "everything" must also be removed from the source
+    peg to expose the largest disk. So all n - 1 smaller disks need to be
+    concentrated on the one auxiliary peg — which is exactly step 1.
+
+After the largest disk is placed on the destination, we just need to rebuild
+the n - 1 stack on top of it, which is step 3.
+
+For three pegs, the optimal number of moves is exactly 2^n - 1. The recursion
+T(n) = 2*T(n - 1) + 1 with T(1) = 1 solves to 2^n - 1.
+
+3.3 THE FOUR-PEG VERSION (FRAME–STEWART)
+----------------------------------------
+With four pegs, there is a much more efficient strategy, discovered by Frame
+and Stewart. Rather than moving n - 1 disks to one auxiliary peg (which is
+expensive), you split the stack into two parts and use the extra peg:
+
+    To move n disks from source to destination using aux1 and aux2:
+        1. Move the top (n - k) disks from source to aux1, using aux2 and
+           destination as the free pegs.
+        2. Move the remaining k disks from source to destination using the
+           classic three-peg strategy (aux1 and aux2 both sit idle).
+        3. Move the (n - k) disks from aux1 to destination, using source and
+           aux2 as the free pegs.
+
+The choice of k determines how balanced the two halves are. A common
+sub-optimal but very simple choice is k = n // 2. The true optimum is reached
+by choosing k ≈ sqrt(2n), which gives a total of about O(sqrt(2^n)) moves.
+For the small n in this visualizer (3 to 8 disks), the choice barely matters.
+
+Our implementation is NOT an auto-solver. The user makes every move. The
+HanoiLogic class is only responsible for:
+
+    - Tracking the state of each peg.
+    - Validating moves against the rules.
+    - Reporting whether the puzzle has been solved (and on which peg).
+
+This makes the puzzle playable rather than watchable: the UI is a referee, and
+the logic is the rulebook.
+
+
+3.4 STATE REPRESENTATION
+------------------------
+    self.towers = {
+        "A": list(range(num_disks, 0, -1)),   # [n, n-1, ..., 2, 1]
+        "B": [],
+        "C": [],
+        "D": [],
+    }
+
+Each peg is a Python list acting as a stack. The BOTTOM of the stack is index
+0; the TOP of the stack is the last element. This matches the physical picture
+if you read the list left-to-right as "bottom-to-top".
+
+For num_disks = 3, peg A starts as [3, 2, 1]:
+
+    index 0 (bottom) -> disk 3 (largest)
+    index 1          -> disk 2
+    index 2 (top)    -> disk 1 (smallest)
+
+The "top disk" of a peg is therefore `towers[name][-1]`, and it can be
+extracted with `towers[name].pop()`. New disks are added with
+`towers[name].append(disk)`.
+
+The invariant that all disks are distinct sizes is essential — the entire
+`can_move` check depends on being able to compare two disk numbers. If two
+disks of equal size existed, "can I place this on that?" would be ambiguous.
+
+
+3.5 THE MOVE COUNTER AND THE OPTIMAL-MOVES ESTIMATE
+---------------------------------------------------
+    self.moves = 0
+
+        Incremented once per successful move. The UI displays it and the win
+        dialog compares it against the theoretical optimum.
+
+    self.min_moves = (3 ** num_disks) - 1
+
+        This is the three-peg optimum, 2^n - 1. We use it as a "par" figure in
+        the win dialog for two reasons:
+
+          1. It is the known optimum for the 3-peg version of the puzzle, and
+             many users are familiar with that number.
+          2. It gives an easy sense of "how well did I do?" — beating the
+             3-peg optimum on a 4-peg board is quite achievable, and the
+             comparison is more interesting than comparing against a
+             non-obvious Frame-Stewart figure.
+
+        If you wanted the true 4-peg optimum, the standard approach is a
+        dynamic-programming table over n, but the improvement is small for
+        n ≤ 8 and the added complexity is not worth it for a small teaching
+        tool.
+
+3.6 RULE VALIDATION — can_move
+------------------------------
+    def can_move(self, src, dst):
+
+        Returns (True, "") if the move is legal, else (False, reason). The
+        reason string is human-readable and is shown to the player in the
+        status bar — the UI does not need to re-derive it.
+
+        if src not in self.towers or dst not in self.towers:
+            return False, "Invalid tower"
+
+            Reject any peg name that is not A, B, C, or D. This guards against
+            UI bugs or future callers passing arbitrary strings.
+
+        if src == dst:
+            return False, "Source and destination are the same"
+
+            Rule 1 implies a move must change the position of some disk. A move
+            from a peg to itself changes nothing, so reject it.
+
+        if not self.towers[src]:
+            return False, f"Tower {src} is empty"
+
+            Rule 2 requires that the source peg have at least one disk. You
+            cannot lift a disk from an empty peg.
+
+        if self.towers[dst] and self.towers[dst][-1] < self.towers[src][-1]:
+            return False, "Cannot place a larger disk on a smaller one"
+
+            The heart of the puzzle: rule 3. Compare the top disk of the source
+            (the one being lifted) with the top disk of the destination (the
+            one it would land on). If the destination is empty, the check
+            short-circuits and the move is allowed. If the destination has a
+            smaller top disk, reject.
+
+            Note the strict `<` — placing an equal disk on an equal disk would
+            be legal (they would not be larger-on-smaller), but in this game
+            all disks have distinct sizes by construction, so the question
+            never arises.
+
+        return True, ""
+
+            All checks passed.
+
+3.7 PERFORMING A MOVE — move
+----------------------------
+    def move(self, src, dst):
+        ok, reason = self.can_move(src, dst)
+        if not ok:
+            return False, reason
+
+            Re-validate. Even though the UI checks before calling move(), the
+            logic should never trust the caller — call it defensively.
+
+        disk = self.towers[src].pop()
+        self.towers[dst].append(disk)
+        self.moves += 1
+        return True, f"Moved disk {disk} from {src} to {dst}"
+
+            Atomically move the top disk from src to dst and update the move
+            count. The success message names the disk and the two pegs.
+
+            There is no separate "undo" — if the player wants to undo, they
+            can move the disk back with the same click interaction.
+
+3.8 DETECTING A WIN — solved_tower
+----------------------------------
+    def solved_tower(self):
+        for name in ("B", "C", "D"):
+            if len(self.towers[name]) == self.num_disks:
+                return name
+        return None
+
+        A peg is "complete" when it holds all n disks. By the rules of the game,
+        any completed peg necessarily holds them in the correct order (largest
+        on bottom, smallest on top) — you cannot stack a larger on a smaller,
+        so the only way to fit all n disks on one peg is in descending order.
+
+        We only check pegs B, C, and D — never A — because A is the STARTING
+        peg. If A were a winning peg, the player would "win" before making any
+        move at all. Excluding A is what makes the puzzle a puzzle.
+
+        The UI calls this after every valid move and, if it returns a non-None
+        name, shows the win dialog with that peg's name.
+
+        Edge case: if num_disks were 0 (not possible here, the spinbox enforces
+        a minimum of 3), len(towers["B"]) == 0 would be true immediately and
+        the puzzle would report a win on B on the first callback. That is why
+        the UI enforces a lower bound at setup time.
+
+3.9 COMPLEXITY AND SOLVABILITY
+------------------------------
+Number of legal moves possible at any point: at most (4 * 3) = 12 directed
+moves, but in practice far fewer because each source peg must be non-empty and
+each destination must accept the top disk.
+
+Win detection: O(1) — checks the length of three lists.
+
+Memory per puzzle: O(n) for the disks themselves, plus O(1) for the move
+counter.
+
+Optimal number of moves (for reference):
+    3-peg version:  2^n - 1
+    4-peg version:  Frame-Stewart; for n = 3 the optimum is 5 moves,
+                    for n = 4 it is 9, for n = 5 it is 13.
+
+For the disk counts this UI exposes (3 to 8), a human player with reasonable
+strategy will solve the puzzle in a small handful of moves — the challenge is
+in the mental bookkeeping, not in the number of moves.
+
+3.10 WHY NOTHING IN THIS FILE IS RECURSIVE
+------------------------------------------
+If this were an auto-solver, run_recursive / _move would live here and implement
+the Frame-Stewart recursion described in section 3.3. But because the USER is
+the one solving the puzzle, the logic layer never generates moves — it only
+validates them and reports wins. That is the correct separation of concerns:
+
+    - hanoi.py   = rulebook: what is legal, what counts as solved.
+    - hanoi_ui.py = referee + board: collect clicks, ask the rulebook, draw.
+
+Adding an auto-solve feature later would be a new method (e.g. `autosolve`)
+that generates moves and calls `self.move(...)` internally, without touching
+the UI's click handling. The current design leaves that door open.
+
+3.11 COMMON BUGS TO AVOID
+-------------------------
+Bug: Treating the front of the list as the top of the stack.
+    If you peek at towers[src][0] instead of towers[src][-1], you will
+    validate moves based on the BOTTOM disk, which is never what moves. Rule 3
+    will be silently wrong.
+
+Bug: Allowing wins on tower A.
+    The puzzle appears solved from the start. Always check only B, C, D.
+
+Bug: Mutating tower state before validation.
+    If move() popped the disk before calling can_move(), an illegal move would
+    corrupt the state. Always validate first, then mutate.
+
+Bug: Forgetting to increment self.moves after a successful move.
+    The UI's move counter freezes, and the win dialog reports a wrong number.
+
+Bug: Assuming num_disks ≥ 1 without enforcement.
+    With n = 0 the logic works but every peg is trivially complete. Enforce
+    a minimum at the UI layer (this UI enforces 3).
+
+
+
+--------------------------------------------------------------------------------
+SECTION 4 — DESIGN PRINCIPLES SHARED BY ALL THREE MODULES
+--------------------------------------------------------------------------------
+
+4.1 SEPARATION OF LOGIC AND PRESENTATION
+----------------------------------------
+Each algorithm is in its own class with zero knowledge of the UI. The only
+coupling is:
+
+    (a) A callback signature  — (index, state) or (i, j, data, state) or
+                                (towers, src, dst, state).
+    (b) A pause                — `time.sleep(delay)` between steps so a human
+                                can follow along.
+
+This means every algorithm file can be tested in isolation:
+
+    def test_binary_finds_last():
+        calls = []
+        BinarySearchLogic(delay=0).run_search([1,2,3], 3, lambda i, s: calls.append((i,s)))
+        assert any(s == "found" for _, s in calls)
+
+No Tkinter, no threads, no GUI. The visualizer is purely a consumer.
+
+4.2 THE DELAY KNOB
+------------------
+All three classes accept a `delay` in __init__. The UI constructs them with a
+value chosen for visual comfort:
+
+    BinarySearchLogic(delay=0.6)   — 600ms per step
+    SelectionSortLogic(delay=0.4)  — 400ms per step
+    HanoiLogic                     — user-driven, no delay needed
+
+Setting delay=0 in tests makes the algorithms run at full speed.
+
+4.3 WHY THE UI RUNS THEM IN A THREAD
+------------------------------------
+The algorithms call time.sleep, which would freeze the Tkinter event loop if
+run on the main thread. The UI therefore spawns a daemon thread for the search
+and sort routines. The daemon flag means the thread dies when the window
+closes, so the process never hangs on exit.
+
+Hanoi does not need a thread because each move is triggered by a click event,
+which is already non-blocking.
+
+4.4 IMMUTABLE INPUTS
+--------------------
+- Binary search reads the array but does not modify it.
+- Selection sort copies the array with `list(arr)` before sorting.
+- Hanoi builds its own tower state from scratch each new game.
+
+This means calling the logic twice with the same input always yields the same
+observable behaviour, which makes the visualizer safe to re-run without hidden
+state.
+
+4.5 ERROR REPORTING
+-------------------
+Rather than raising exceptions on user error, the algorithms return status
+strings:
+
+    can_move     returns (False, "reason")
+    move         returns (False, "reason")
+    run_search   emits state "Not_found"
+
+The UI displays these verbatim. This keeps the logic pleasant to use from a
+variety of callers (GUI, tests, future REPL) without requiring the caller to
+catch exceptions.
+
+
+
+--------------------------------------------------------------------------------
+END OF FILE
+--------------------------------------------------------------------------------
