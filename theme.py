@@ -1,0 +1,24 @@
+FONT_TITLE = ("Segoe UI", 22, "bold")
+FONT_SUBTITLE = ("Segoe UI", 11)
+FONT_HEADING = ("Segoe UI", 14, "bold")
+FONT_BODY = ("Segoe UI", 11)
+FONT_CELL = ("Segoe UI", 14, "bold")
+
+COLOR_BG = "#1e1e2e"
+COLOR_PANEL = "#2a2a3c"
+COLOR_TEXT = "#e0e0e0"
+COLOR_MUTED = "#9a9ab0"
+COLOR_ACCENT = "#7aa2f7"
+
+CELL_DEFAULT = "#2f3549"
+CELL_TEXT_DEFAULT = "#e0e0e0"
+CELL_ACTIVE = "#e0af68"
+CELL_ACTIVE_TEXT = "#1e1e2e"
+CELL_COMPARE = "#7dcfff"
+CELL_COMPARE_TEXT = "#1e1e2e"
+CELL_MIN = "#f7768e"
+CELL_MIN_TEXT = "#1e1e2e"
+CELL_DONE = "#9ece6a"
+CELL_DONE_TEXT = "#1e1e2e"
+CELL_ELIMINATED = "#565f89"
+CELL_ELIMINATED_TEXT = "#c0caf5"
